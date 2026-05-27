@@ -13,11 +13,6 @@
 - **Error handling**: Clear user feedback when upstream services fail
 - Keep Motif generation working, but don't block MVP playback on it
 
-## Non-scope (avoid for now)
-- Perfect matching/similarity, chord/key analysis, advanced arrangement
-- Big infra (DB/CDN/monitoring/analytics), large refactors
-- New features unrelated to search/fetch/parse/playback reliability
-
 ## Guidelines (how to work in this repo)
 - **Bias toward real MIDI**: don't silently replace real results with synthetic/mock in the default user path.
 - **Make degradation explicit**: if mock/synthetic is used, it must be clearly indicated (UI/logs).

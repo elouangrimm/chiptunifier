@@ -6,6 +6,7 @@ interface MIDISearchResult {
   midiUrl: string;
   confidence: number;
   parsed?: ParsedMIDIInfo;
+  rawBuffer?: ArrayBuffer;
 }
 
 interface ParsedMIDIInfo {

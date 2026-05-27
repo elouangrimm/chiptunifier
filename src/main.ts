@@ -3,6 +3,7 @@ import { MIDIService } from './services/MIDIService';
 import { MIDIParser } from './midi/MIDIParser';
 import { SoundfontMIDIPlayer } from './synthesis/SoundfontMIDIPlayer';
 import { getAudioContext, isAudioReady, peekAudioContext, unlockAudio } from './utils/audioUnlock';
+import { AudioExporter } from './utils/AudioExporter';
 import type { NoteEvent } from './types';
 
 class MotifApp {
@@ -15,6 +16,8 @@ class MotifApp {
   
   private searchBtn!: HTMLButtonElement;
   private songInput!: HTMLInputElement;
+  private uploadMidiBtn!: HTMLButtonElement;
+  private midiUploadInput!: HTMLInputElement;
   private status!: HTMLElement;
   
   private resultsSection!: HTMLElement;
@@ -41,6 +44,7 @@ class MotifApp {
 
   // Motif controls
   private motifBtn!: HTMLButtonElement;
+  private exportAudioBtn!: HTMLButtonElement;
   private motifProgressContainer!: HTMLElement;
   private motifProgressBar!: HTMLInputElement;
   private motifProgressFill!: HTMLElement;
@@ -102,6 +106,8 @@ class MotifApp {
   private initializeUI(): void {
     this.searchBtn = document.getElementById('searchBtn') as HTMLButtonElement;
     this.songInput = document.getElementById('songInput') as HTMLInputElement;
+    this.uploadMidiBtn = document.getElementById('uploadMidiBtn') as HTMLButtonElement;
+    this.midiUploadInput = document.getElementById('midiUploadInput') as HTMLInputElement;
     this.status = document.getElementById('status')!;
 
     this.resultsSection = document.getElementById('resultsSection')!;
@@ -121,6 +127,7 @@ class MotifApp {
 
     // Motif controls
     this.motifBtn = document.getElementById('motifBtn') as HTMLButtonElement;
+    this.exportAudioBtn = document.getElementById('exportAudioBtn') as HTMLButtonElement;
     this.motifProgressContainer = document.getElementById('motifProgressContainer')!;
     this.motifProgressBar = document.getElementById('motifProgressBar') as HTMLInputElement;
     this.motifProgressFill = document.getElementById('motifProgressFill')!;
@@ -164,6 +171,37 @@ class MotifApp {
     // Use both click and touchend for iOS compatibility
     this.searchBtn.addEventListener('click', doSearch);
 
+    this.uploadMidiBtn.addEventListener('click', () => {
+      this.midiUploadInput.click();
+    });
+
+    this.midiUploadInput.addEventListener('change', async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      this.updateStatus('Loading local MIDI file...');
+      try {
+        const buffer = await file.arrayBuffer();
+        this.searchResults = [{
+          id: 'upload-' + Math.random().toString(36).substr(2, 9),
+          title: file.name.replace(/\.[^/.]+$/, ""),
+          source: 'Local Upload',
+          pageUrl: '',
+          midiUrl: '',
+          confidence: 1.0,
+          rawBuffer: buffer
+        }];
+        this.displayResults();
+        this.setState('results');
+        // Auto select it so it immediately loads
+        void this.selectResult(0);
+      } catch (err) {
+        this.updateStatus(`Upload error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
+      
+      this.midiUploadInput.value = ''; // Reset input
+    });
+
     this.songInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') {
         doSearch();
@@ -174,6 +212,7 @@ class MotifApp {
 
     // Motif
     this.motifBtn.addEventListener('click', () => this.handleMotif());
+    this.exportAudioBtn.addEventListener('click', () => this.handleAudioExport());
     this.playPauseBtn.addEventListener('click', () => void this.handlePlayPause());
 
     // Preview inside selected source only
@@ -315,16 +354,25 @@ class MotifApp {
       return;
     }
 
-    // Stop any playing Motif audio
-    this.handleMotifStop();
-
     this.updateStatus('Searching…');
     console.log('[MotifApp] Starting search for:', songName);
     this.searchBtn.disabled = true;
     this.setState('idle');
 
     try {
-      const results = await this.midiService.search(songName);
+      let results;
+      if (songName.startsWith('http://') || songName.startsWith('https://')) {
+        results = [{
+          id: 'url-' + Math.random().toString(36).substr(2, 9),
+          title: songName.split('/').pop() || 'Direct URL',
+          source: 'URL',
+          pageUrl: songName,
+          midiUrl: songName,
+          confidence: 1.0
+        }];
+      } else {
+        results = await this.midiService.search(songName);
+      }
       
       if (results.length === 0) {
         this.updateStatus('No MIDI files found. Try a different search.');
@@ -419,7 +467,7 @@ class MotifApp {
 
     try {
       // Fetch and parse MIDI
-      const midiBuffer = await this.midiService.fetchMIDI(result.midiUrl);
+      const midiBuffer = result.rawBuffer ? result.rawBuffer : await this.midiService.fetchMIDI(result.midiUrl);
       if (!midiBuffer) {
         throw new Error('Failed to fetch MIDI file');
       }
@@ -853,6 +901,8 @@ class MotifApp {
     // Generated artifact content
     const showGenerated = state === 'generated';
     this.generatedBlock.style.display = showGenerated ? 'block' : 'none';
+    this.exportAudioBtn.style.display = showGenerated ? 'inline-block' : 'none';
+    this.exportAudioBtn.disabled = !showGenerated || !this.hasGenerated;
     this.playPauseBtn.disabled = !showGenerated || !this.hasGenerated;
     this.playPauseBtn.textContent = this.isMotifPlaying ? 'Pause' : 'Play';
 
@@ -861,6 +911,39 @@ class MotifApp {
       this.updateIOSAudioBanner();
     } else {
       this.iosAudioBanner.style.display = 'none';
+    }
+  }
+
+  private async handleAudioExport(): Promise<void> {
+    if (!this.hasGenerated || !this.currentMIDI) return;
+    
+    this.updateStatus('Exporting audio (this may take a moment)...');
+    this.exportAudioBtn.disabled = true;
+    
+    try {
+      const duration = this.motifEngine.getDuration();
+      // Ensure we have the audioContext from the unlocked state
+      const actx = peekAudioContext() || new (window.AudioContext || (window as any).webkitAudioContext)();
+      const wavBlob = await AudioExporter.exportToWav(actx, duration + 2, this.motifEngine);
+      
+      const url = URL.createObjectURL(wavBlob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `${this.cleanSongTitle(this.searchResults[this.selectedResultIndex]?.title || 'Motif')}.wav`;
+      document.body.appendChild(a);
+      a.click();
+      
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 100);
+      
+      this.updateStatus('Export complete!');
+    } catch (e) {
+      this.updateStatus(`Export failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    } finally {
+      this.exportAudioBtn.disabled = false;
     }
   }
 
@@ -958,3 +1041,5 @@ try {
     status.style.color = '#ff6b6b';
   }
 }
+
+// Add export function

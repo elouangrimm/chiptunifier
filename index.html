@@ -1147,8 +1147,10 @@
         </div>
 
         <div class="controls">
-            <input type="text" id="songInput" placeholder="Search for a song…" />
+            <input type="text" id="songInput" placeholder="Search for a song or paste a .mid URL…" />
             <button id="searchBtn" class="primary">Search</button>
+            <input type="file" id="midiUploadInput" accept=".mid,.midi,audio/midi" style="display: none;" />
+            <button id="uploadMidiBtn" class="secondary" style="font-size: 9px; margin-left: 8px; border: var(--pixel-border) solid var(--gb-dark); background: var(--gb-lightest); color: var(--gb-darkest); cursor: pointer; padding: 0 10px; font-family: 'Press Start 2P', monospace;">Upload</button>
         </div>
 
         <div id="status">Ready. Search any song to make a Game Boy version.</div>
@@ -1182,6 +1184,7 @@
 
                 <div class="selected-actions" id="preGenActions">
                     <button id="motifBtn" class="primary" disabled>Generate music</button>
+                    <button id="exportAudioBtn" class="secondary" style="margin-left: 10px; display: none;" disabled>Export Audio (WAV)</button>
                 </div>
 
                 <div class="selected-support" id="preGenSupport">
